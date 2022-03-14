@@ -1,0 +1,74 @@
+---
+- hosts: target
+  become: yes
+  remote_user: ec2-user
+  become_user: root
+  pre_tasks:
+   - name: yum update
+     yum:
+       name: '*'
+       state: latest
+   - name: Install package dependencies.
+     package: name={{ item }} state=present
+     with_items:
+       - python
+       - unzip
+  tasks:
+   - name: Download Long Term Jenkins release
+     get_url:
+       url: http://pkg.jenkins-ci.org/redhat/jenkins.repo 
+       dest: /etc/yum.repos.d/jenkins.repo
+
+   - name: Import jenkins key from url
+     ansible.builtin.rpm_key:
+       state: present 
+       key: https://pkg.jenkins.io/redhat/jenkins.io.key 
+
+   - name: Install git
+     yum:
+       name: git
+       state: present
+    
+   - name: Install jenkins
+     yum:
+       name: jenkins
+       state: present
+
+   - name: daemon-reload to pick up config changes
+     ansible.builtin.systemd:
+       daemon_reload: yes
+
+   - name: Start jenkins
+     ansible.builtin.service:
+       name: jenkins
+       enabled: yes
+       state: started
+    
+   - name: Install Docker
+     ansible.builtin.yum:
+       name:
+         - docker
+       state: latest
+       update_cache: true
+    
+   - name: Start Docker
+     ansible.builtin.service:
+       name: "docker"
+       enabled: true
+       state: started
+
+   - name: Download the awscli bundle.
+     get_url: url=https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip dest=/tmp/awscliv2.zip
+     register: aws_cli_download_bundle
+
+   - name: Unarchive the installer.
+     unarchive: src=/tmp/awscliv2.zip dest=/tmp copy=no creates=/tmp/awscliv2
+     when: aws_cli_download_bundle.changed
+     register: aws_cli_unarchive_installer
+
+   - name: Install awscli package.
+     shell: ./tmp/awscliv2/aws/install
+     args:
+       creates: /usr/bin/aws
+     when: aws_cli_unarchive_installer.changed
+ 
